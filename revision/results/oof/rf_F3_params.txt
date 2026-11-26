@@ -1,0 +1,5 @@
+{'est__max_depth': 12, 'est__max_features': np.float64(0.548461687410503), 'est__min_samples_leaf': 6, 'pre__rep__shrink': 5.0}
+{'est__max_depth': 12, 'est__max_features': np.float64(0.6128595135348579), 'est__min_samples_leaf': 8, 'pre__rep__shrink': 5.0}
+{'est__max_depth': 12, 'est__max_features': np.float64(0.6128595135348579), 'est__min_samples_leaf': 8, 'pre__rep__shrink': 5.0}
+{'est__max_depth': 12, 'est__max_features': np.float64(0.587392437378301), 'est__min_samples_leaf': 9, 'pre__rep__shrink': 20.0}
+{'est__max_depth': 12, 'est__max_features': np.float64(0.548461687410503), 'est__min_samples_leaf': 6, 'pre__rep__shrink': 5.0}

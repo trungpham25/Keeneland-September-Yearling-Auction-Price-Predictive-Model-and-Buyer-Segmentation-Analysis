@@ -1,0 +1,5 @@
+{'pre__rep__rep__method': 'mean', 'pre__rep__rep__min_n': None, 'pre__rep__rep__shrink': 10.0}
+{'pre__rep__rep__method': 'mean', 'pre__rep__rep__min_n': None, 'pre__rep__rep__shrink': 10.0}
+{'pre__rep__rep__method': 'mean', 'pre__rep__rep__min_n': None, 'pre__rep__rep__shrink': 10.0}
+{'pre__rep__rep__method': 'mean', 'pre__rep__rep__min_n': None, 'pre__rep__rep__shrink': 10.0}
+{'pre__rep__rep__method': 'mean', 'pre__rep__rep__min_n': None, 'pre__rep__rep__shrink': 10.0}
