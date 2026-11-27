@@ -24,6 +24,15 @@
 - PASS: CatBoost S2: no outcome/post-sale ID columns
 - PASS: CatBoost S2: no own-racing-record (cross) statistics
 - PASS: CatBoost S2: no hindsight progeny statistics
+- PASS: Ridge S2w: no outcome/post-sale ID columns
+- PASS: Ridge S2w: no own-racing-record (cross) statistics
+- PASS: Ridge S2w: no hindsight progeny statistics
+- PASS: LightGBM S2w: no outcome/post-sale ID columns
+- PASS: LightGBM S2w: no own-racing-record (cross) statistics
+- PASS: LightGBM S2w: no hindsight progeny statistics
+- PASS: CatBoost S2w: no outcome/post-sale ID columns
+- PASS: CatBoost S2w: no own-racing-record (cross) statistics
+- PASS: CatBoost S2w: no hindsight progeny statistics
 
 S2 inputs: Brilliant, Center_of_Distribution, Classic, Color, Consignor_key, Dam_key, Dosage_Index, Dosage_missing, Intermediate, Is_male, Professional, Session, Sire_key, Sire_new_to_sale, Solid, Year
 
@@ -31,24 +40,30 @@ S2 inputs: Brilliant, Center_of_Distribution, Classic, Color, Consignor_key, Dam
 
 - PASS: index encoder: own score unchanged when own price changes (40 random horses) - max change 0.00e+00
 - PASS: mean encoder: own score unchanged when own price changes (40 random horses) - max change 0.00e+00
+- PASS: within-session index encoder: own score unchanged when own price changes (40 random horses) - max change 0.00e+00
 - Contrast: with the published full-sample index, raising one horse's price moves its own Dam Reputation from 0.755 to 1.000.
 
 ## T3. Test predictions do not depend on test prices
 
 - PASS: random 80/20, Ridge S2: predictions identical after scrambling test prices - max |diff| = 0.0e+00
+- PASS: random 80/20, Ridge S2w: predictions identical after scrambling test prices - max |diff| = 0.0e+00
 - PASS: random 80/20, Ridge F3: predictions identical after scrambling test prices - max |diff| = 0.0e+00
 - PASS: random 80/20, LightGBM S2: predictions identical after scrambling test prices - max |diff| = 0.0e+00
+- PASS: random 80/20, LightGBM S2w: predictions identical after scrambling test prices - max |diff| = 0.0e+00
 - PASS: random 80/20, CatBoost S2: predictions identical after scrambling test prices - max |diff| = 0.0e+00
 - PASS: year-ahead (train 2020-23, test 2024), Ridge S2: predictions identical after scrambling test prices - max |diff| = 0.0e+00
+- PASS: year-ahead (train 2020-23, test 2024), Ridge S2w: predictions identical after scrambling test prices - max |diff| = 0.0e+00
 - PASS: year-ahead (train 2020-23, test 2024), Ridge F3: predictions identical after scrambling test prices - max |diff| = 0.0e+00
 - PASS: year-ahead (train 2020-23, test 2024), LightGBM S2: predictions identical after scrambling test prices - max |diff| = 0.0e+00
+- PASS: year-ahead (train 2020-23, test 2024), LightGBM S2w: predictions identical after scrambling test prices - max |diff| = 0.0e+00
 - PASS: year-ahead (train 2020-23, test 2024), CatBoost S2: predictions identical after scrambling test prices - max |diff| = 0.0e+00
 
 ## T4. Null test: prices randomly permuted across horses
 
-- PASS: LightGBM S2: CV R2 with permuted prices <= 0.01 - mean -0.0464, max -0.0366
-- PASS: Ridge F3: CV R2 with permuted prices <= 0.01 - mean -0.0062, max -0.0044
-- PASS: Ridge S2: CV R2 with permuted prices <= 0.01 - mean -0.0047, max -0.0030
+- PASS: LightGBM S2: CV R2 with permuted prices <= 0.01 - mean -0.0457, max -0.0436
+- PASS: Ridge F3: CV R2 with permuted prices <= 0.01 - mean -0.0028, max -0.0014
+- PASS: Ridge S2: CV R2 with permuted prices <= 0.01 - mean -0.0019, max -0.0009
+- PASS: Ridge S2w: CV R2 with permuted prices <= 0.01 - mean -0.0021, max -0.0009
 
 ## T5. When were the pedigree statistics pulled?
 

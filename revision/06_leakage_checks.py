@@ -85,7 +85,7 @@ for fs in FEATURE_SETS:
             own = cols & set(OWN_OUTCOME)
             check(f"{kind} {fs}: no own-racing-record (cross) statistics", not own,
                   f"found {sorted(own)}" if own else "")
-        if fs == "S2":
+        if fs in ("S2", "S2w"):
             hs = cols & set(HINDSIGHT)
             check(f"{kind} {fs}: no hindsight progeny statistics", not hs, f"found {sorted(hs)}" if hs else "")
 report.append("\nS2 inputs: " + ", ".join(sorted(consumed_columns(fixed_cat("S2"), "S2"))))
@@ -96,15 +96,19 @@ report.append("\nS2 inputs: " + ", ".join(sorted(consumed_columns(fixed_cat("S2"
 report.append("\n## T2. Reputation encoder: own price never enters own score\n")
 keys = ["Sire_key", "Dam_key", "Consignor_key"]
 for method, kw in [("index", dict(min_n={"Sire_key": 5, "Dam_key": 2, "Consignor_key": 3})),
-                   ("mean", dict(shrink=5.0))]:
-    enc = CrossFitReputation(cols=tuple(keys), method=method, **kw)
-    base = enc.fit_transform(df[keys], df["y"].values)
+                   ("mean", dict(shrink=5.0)),
+                   ("within-session index", dict(min_n={"Sire_key": 5, "Dam_key": 2, "Consignor_key": 3},
+                                                 adjust_cols=("Year", "Session")))]:
+    method_arg = "index" if method.startswith("within") else method
+    Xk = df[keys + ["Year", "Session"]]
+    enc = CrossFitReputation(cols=tuple(keys), method=method_arg, **kw)
+    base = enc.fit_transform(Xk, df["y"].values)
     rows = rng.choice(len(df), 40, replace=False)
     max_change = 0.0
     for i in rows:
         y2 = df["y"].values.copy()
         y2[i] += 5.0  # huge change in own price
-        new = CrossFitReputation(cols=tuple(keys), method=method, **kw).fit_transform(df[keys], y2)
+        new = CrossFitReputation(cols=tuple(keys), method=method_arg, **kw).fit_transform(Xk, y2)
         max_change = max(max_change, float(np.abs(new[i] - base[i]).max()))
     check(f"{method} encoder: own score unchanged when own price changes (40 random horses)",
           max_change < 1e-12, f"max change {max_change:.2e}")
@@ -141,8 +145,9 @@ te_t = df[df["Year"] == 2024].copy()
 te_t["Year"] = 2023
 splits["year-ahead (train 2020-23, test 2024)"] = (tr_t, te_t)
 for sname, (a, b) in splits.items():
-    for kind, make, fs in [("Ridge", fixed_ridge, "S2"), ("Ridge", fixed_ridge, "F3"),
-                           ("LightGBM", fixed_lgbm, "S2"), ("CatBoost", fixed_cat, "S2")]:
+    for kind, make, fs in [("Ridge", fixed_ridge, "S2"), ("Ridge", fixed_ridge, "S2w"), ("Ridge", fixed_ridge, "F3"),
+                           ("LightGBM", fixed_lgbm, "S2"), ("LightGBM", fixed_lgbm, "S2w"),
+                           ("CatBoost", fixed_cat, "S2")]:
         m = make(fs).fit(a, a["y"])
         p1 = m.predict(b)
         p2 = m.predict(scramble(b))
@@ -164,7 +169,7 @@ for rep in range(3):
     for c in ("y", "Log_Price", "Price"):
         d[c] = df[c].values[perm]
     for kind, make, fs in [("Ridge", fixed_ridge, "S2"), ("LightGBM", fixed_lgbm, "S2"),
-                           ("Ridge", fixed_ridge, "F3")]:
+                           ("Ridge", fixed_ridge, "S2w"), ("Ridge", fixed_ridge, "F3")]:
         s = cross_val_score(make(fs), d, d["y"], cv=cv.split(d, d["Session"]), scoring="r2")
         null_rows.append({"perm": rep, "model": f"{kind} {fs}", "R2": s.mean()})
 null = pd.DataFrame(null_rows).groupby("model")["R2"].agg(["mean", "max"])

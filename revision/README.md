@@ -14,8 +14,9 @@ python 02_nested_cv.py               # nested-CV comparison of feature sets and 
 python 03_temporal.py                # train on earlier years, predict a later sale; conformal intervals (~8 min)
 python 04_inference_and_sessions.py  # OLS with clustered SEs, session heterogeneity, permutation importance
 python 05_summary.py                 # paired fold comparisons + figure
-python 06_leakage_checks.py          # automated leakage test suite (35 checks)                    (~3 min)
+python 06_leakage_checks.py          # automated leakage test suite (50 checks)                    (~3 min)
 python 07_collinearity.py            # VIF / GVIF, condition indices, sign flips, suppression checks
+python 08_engineered_features.py     # mechanical links among engineered features; within-session reputation
 ```
 
 All output tables are in `results/` (Markdown and CSV).
@@ -38,7 +39,7 @@ All output tables are in `results/` (Markdown and CSV).
 - session, year, sex, color and dosage profile;
 - sire, dam and consignor reputation, built from *other* horses' prices only.
 
-All **35 automated leakage checks pass** (`results/06_leakage_checks.md`).
+All **50 automated leakage checks pass** (`results/06_leakage_checks.md`).
 
 **The year-ahead number (≈ 0.62) is the cleanest estimate** and should be the headline. It uses only sales from
 earlier years, exactly what a buyer would have.
@@ -57,10 +58,10 @@ Three sources of leakage affect the published model. All three are removed in th
 
 | Test | What would fail if there were leakage | Result |
 |---|---|---|
-| T1 Input audit | Any model reading price, purchaser or name columns; clean sets reading cross or hindsight stats | 21/21 pass |
-| T2 Encoder | A horse's own reputation score changing when its own price changes | pass (max change 0) |
-| T3 Test-label invariance | Test predictions changing when test prices are scrambled (random and year-ahead splits; Ridge, LightGBM, CatBoost) | 8/8 pass (difference exactly 0) |
-| T4 Null test | CV R² above 0 when prices are randomly permuted across horses | pass (R² −0.005 to −0.046) |
+| T1 Input audit | Any model reading price, purchaser or name columns; clean sets reading cross or hindsight stats | 30/30 pass |
+| T2 Encoder | A horse's own reputation score changing when its own price changes (raw, shrunken-mean and within-session encoders) | 3/3 pass (max change 0) |
+| T3 Test-label invariance | Test predictions changing when test prices are scrambled (random and year-ahead splits; Ridge, LightGBM, CatBoost; S2, S2w, F3) | 12/12 pass (difference exactly 0) |
+| T4 Null test | CV R² above 0 when prices are randomly permuted across horses | 4/4 pass (R² ≤ −0.001) |
 | T6 Duplicates | The same horse appearing twice | pass (0) |
 
 **Remaining non-code caveat:** in random K-fold CV, a horse's sire, dam or consignor reputation can use horses
@@ -118,20 +119,22 @@ The unforecastable year-level market shift costs less than 0.005 R². Prediction
 
 ### 4.3 Interpretation (clean S2, OLS with sire-clustered SEs) — `results/04_inference_and_sessions.md`
 
-- **Sire reputation works mostly through session placement.** A 1-SD increase goes with +0.81 log points without
-  session effects, but only +0.24 with them. Better-bred yearlings are placed in earlier sessions; within a
-  session, sire reputation still matters, but much less.
-- **Dam Reputation is weak** once its leak is removed (+0.017, p = 0.07 with session FE). Permutation
-  importance ≈ 0. Most dams have no other sales in the sample to build a reputation from.
-- Consignor reputation (+0.09 per SD) and colts (+0.11 log points ≈ +11%) stay significant with session FE.
-  Dosage terms are small. The derived Dosage Index and Center of Distribution are left out of the coefficient
-  table because they are functions of the five dosage points (Section 5).
-- Sire-new-to-sale (+0.09) is a **suppression effect**, not a novelty premium. It's positive only after
-  controlling for sire reputation (0.02, p = 0.65 without it), and the raw gap within the same year and session is
-  +0.008.
-- **The sire-reputation slope falls across books**: 0.33 (Sessions 1–2), then 0.31, 0.27, 0.21, 0.17, down to 0.03
-  (Sessions 11–12). The Wald test that the slopes are equal gives p = 0.0001. Caveat: sessions are assigned partly
-  on expected value, so within-session slopes are affected by that selection.
+Reputation in the coefficient table is **within-session reputation** (Section 6): it's built from prices relative
+to their year × session mean, so it measures how a sire's, dam's or consignor's yearlings sell *within* their
+session, not which sessions they get placed in.
+
+- **Sire reputation matters within sessions:** +0.15 log points per SD with session FE.
+- **Raw-price sire reputation mostly works through session placement.** With raw-price reputation (Step 7), a 1-SD
+  increase goes with +0.81 without session FE but only +0.24 with them.
+- **Consignor reputation** (+0.12 per SD) and **colts** (+0.10 log points ≈ +10%) are significant.
+- **Dosage terms are small.** Only Intermediate is clearly significant (+0.04).
+- **Dam Reputation is about 0** (−0.014, p = 0.18). It's the default value for about 95% of horses, because few
+  dams have two or more *other* sold yearlings. The paper's dam effect existed only through leakage.
+- **Sire-new-to-sale is not a novelty premium.** It's +0.057 (p = 0.11) with within-session reputation. With
+  raw-price reputation it is a suppression effect (Section 5).
+- **The sire-reputation slope falls across books**: 0.22 (Sessions 1–2), 0.22, 0.17, 0.17, 0.08, 0.12 (Sessions
+  11–12). The Wald test that the slopes are equal gives p = 0.015. The spread of within-session reputation is similar
+  in every book (relative SD 0.93–1.03), so this isn't range restriction.
 - **Accuracy by session**: RMSE rises from about 0.62 (Session 1) to 0.90–0.97 (Sessions 6–9). Median absolute
   dollar error rises from 37% to 55%. Within-session R² is 0.07–0.21; the paper's 0.21–0.37 was inflated by leakage.
 
@@ -144,6 +147,8 @@ The unforecastable year-level market shift costs less than 0.005 R². Prediction
 | S2 without derived dosage summaries (coefficient table) | 30 | 1.9 | 0 | 16.7 | 0 | 1 (sire new to sale) |
 | S1 (+ hindsight sire/BS stats) | 40 | 7.4 | 4 | 18.0 | 0 | 2 |
 
+- These diagnostics use raw-price reputation. With within-session reputation (Section 6), the sire-reputation VIF
+  falls further, from 1.92 to 1.13.
 - **No harmful collinearity in the revised clean model.** The only condition index above 15 comes from the
   intercept versus the session dummies, which is how dummy coding always looks; it doesn't inflate any coefficient
   of interest.
@@ -167,7 +172,22 @@ The unforecastable year-level market shift costs less than 0.005 R². Prediction
   significant). The published −0.334 is consistent with collinearity-driven sign instability, on top of the
   own-record leak.
 
-## 6. What this means for the paper's ML sections
+## 6. Mechanical dependence among engineered features — `results/08_engineered_features.md`
+
+Every engineered feature is built from columns of the same dataset, so some are tied to each other, or to session,
+by construction:
+
+| Engineered feature | Mechanically tied to | Size | Consequence / fix |
+|---|---|---|---|
+| Sire / consignor reputation (from prices) | **Session**, because prices are sorted by session | Session explains 45% of raw sire reputation (12% for consignor) | **Within-session reputation**, built from prices relative to the year × session mean (cell means from training rows only). Overlap falls to 7%, sire VIF 1.92 → 1.13. Prediction unchanged (Ridge 0.6356 vs 0.6334 nested CV; 0.616 vs 0.615 year-ahead). Used for the coefficient table. |
+| Dam reputation | Its own sample-size rule | **95.5% of horses get the default score** (a dam needs 2+ other sold yearlings) | Carries information for only about 5% of horses, so importance is about 0. A real dam signal needs the dam's produce record from Equineline. |
+| Sire reputation | Its own sample-size rule | 5% of horses at the default; corr. with log prior sales 0.50 | Prior-sales counts are included alongside, so the model can tell "no evidence" from "low reputation". |
+| Reputation index components (p90, elite share, median rank, p25) | Each other (same sire's prices) | r = 0.62–0.92; first principal component 84% | The 0.40/0.30/0.20/0.10 weighting barely matters; the index is essentially one dimension. |
+| Sire win rate, black-type rate, earnings per starter, AEI | Each other (same starters denominator) | r up to 0.87; log starters vs log winners 0.987 | Prediction only (S1); never interpreted one by one. |
+| Dosage Index, Center of Distribution | Five dosage points (deterministic) | r = 1.000 / 0.9999 | Dropped from the coefficient table (Section 5). |
+| Sire new to sale | Year (0 in 2020 by construction), sire counts, reputation | corr. with prior sire sales −0.27 | Not interpreted as a premium. |
+
+## 7. What this means for the paper's ML sections
 
 1. **Headline:** about 0.62 out-of-sample R² when predicting the next sale from catalog information (0.64 in
    nested CV), not 0.54. The published predictors alone reach only about 0.34–0.43 without leakage.
@@ -180,7 +200,7 @@ The unforecastable year-level market shift costs less than 0.005 R². Prediction
    cross statistics are excluded because they contain the horse's own racing record, and that all tuning is
    nested.
 
-## 7. Remaining limitations (cannot be fixed with `sold.csv`)
+## 8. Remaining limitations (cannot be fixed with `sold.csv`)
 
 - **Dated pedigree statistics.** To use sire and broodmare-sire records without hindsight, the paper needs
   Equineline snapshots as of each catalog date. The S1 results bound the gain from those statistics at about

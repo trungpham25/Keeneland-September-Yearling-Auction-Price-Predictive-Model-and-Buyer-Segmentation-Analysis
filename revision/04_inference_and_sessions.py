@@ -37,8 +37,12 @@ rng = np.random.default_rng(SEED)
 # ---------------------------------------------------------------------------
 # (a) OLS with cluster-robust SEs
 # ---------------------------------------------------------------------------
-enc = CrossFitReputation(cols=("Sire_key", "Dam_key", "Consignor_key"), method="index", min_n=MIN_N)
-R = enc.fit_transform(df[["Sire_key", "Dam_key", "Consignor_key"]], df["y"])
+# Within-session reputation (Step 8): built from prices relative to their
+# year x session mean, so the score does not re-encode session placement
+# (raw-price Sire Reputation is 45% explained by session; this version 7%).
+enc = CrossFitReputation(cols=("Sire_key", "Dam_key", "Consignor_key"), method="index", min_n=MIN_N,
+                         adjust_cols=("Year", "Session"))
+R = enc.fit_transform(df[["Sire_key", "Dam_key", "Consignor_key", "Year", "Session"]], df["y"])
 df["Sire_Reputation"], df["Dam_Reputation"], df["Consignor_Reputation"] = R.T
 
 # Clean (S2) specification: no cross statistics (own racing record) and no
@@ -183,13 +187,17 @@ with open(f"{RESULTS}/04_inference_and_sessions.md", "w") as f:
     f.write("## (a) OLS coefficients, cluster-robust SEs by sire (N = 6,416)\n\n")
     f.write("Clean specification S2: catalog information only (no cross statistics, which contain the horse's own "
             "racing record, and no progeny statistics pulled after the sale). "
-            "Reputation indices are cross-fitted (no horse's own price enters its index). Continuous predictors "
+            "Reputation indices are cross-fitted (no horse's own price enters its index) and built from prices "
+            "relative to their year x session mean, so they measure how a sire's (dam's, consignor's) yearlings "
+            "sell within their session rather than which sessions they are placed in (Step 8). Dam Reputation "
+            "is the default value for ~95% of horses (few dams have two or more other sold yearlings), so its "
+            "coefficient rests on ~5% of the sample. Continuous predictors "
             "standardized; coefficients are changes in log price per 1 SD. Year FE in both columns; "
             f"session FE in the second. R2: {fit_a.rsquared:.3f} without session FE, {fit_b.rsquared:.3f} with. "
             "Derived dosage summaries (Dosage Index, Center of Distribution) are omitted because they are "
-            "functions of the five dosage points. All VIFs < 2 (Step 7). The Sire-new-to-sale coefficient is a "
-            "suppression effect (positive only conditional on Sire Reputation; see Step 7) and should not be read "
-            "as a novelty premium.\n\n")
+            "functions of the five dosage points. All VIFs < 2 (Steps 7-8). The Sire-new-to-sale coefficient "
+            "should not be read as a novelty premium: with raw-price reputation it is a suppression effect "
+            "(Step 7), and with within-session reputation it is not significant.\n\n")
     f.write(fmt_table(compact) + "\n\n")
     f.write(f"## (b-i) Accuracy by session (out-of-fold predictions of `{model_col}` from Step 2)\n\n")
     f.write("RMSE is comparable across sessions; within-session R2 is not, because it divides by each "

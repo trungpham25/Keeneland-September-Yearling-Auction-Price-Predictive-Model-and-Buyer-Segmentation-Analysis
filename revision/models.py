@@ -40,6 +40,10 @@ FEATURE_SETS = {
                rep_cols=KEYS3, rep_count=True),
     "S2": dict(numeric=CATALOG, onehot=["Year", "Session", "Color"],
                rep_cols=KEYS3, rep_count=True),
+    # S2 with within-session reputation (built from prices relative to their
+    # year x session mean), which removes the mechanical session overlap.
+    "S2w": dict(numeric=CATALOG, onehot=["Year", "Session", "Color"],
+                rep_cols=KEYS3, rep_count=True, rep_adjust=["Year", "Session"]),
 }
 FEATURE_SET_LABELS = {
     "F0": "Published 20 predictors, reputation leak removed (still contains own-record cross stats)",
@@ -48,6 +52,7 @@ FEATURE_SET_LABELS = {
     "F3": "F2 + extra pedigree stats, color, prior-sales counts",
     "S1": "Clean + hindsight: S2 + sire/broodmare-sire progeny stats (pulled after the sales)",
     "S2": "Clean, catalog-only: session, year, sex, color, dosage, sire/dam/consignor reputation",
+    "S2w": "S2 with within-session reputation (prices relative to year x session mean)",
 }
 MIN_N = {"Sire_key": 5, "Dam_key": 2, "Consignor_key": 3}
 
@@ -64,7 +69,8 @@ def linear_model(fs, kind="ridge", inner_cv=5):
     spec = dict(FEATURE_SETS[fs])
     pre = build_preprocessor(spec["numeric"], spec["onehot"], spec["rep_cols"],
                              rep_method="index", rep_min_n=MIN_N,
-                             rep_count=spec.get("rep_count", False), scale=True)
+                             rep_count=spec.get("rep_count", False),
+                             rep_adjust=spec.get("rep_adjust"), scale=True)
     if kind == "ridge":
         est = RidgeCV(alphas=RIDGE_ALPHAS)
     elif kind == "ols":
@@ -82,7 +88,8 @@ def tree_preprocessor(fs="F3"):
     numeric = list(spec["numeric"]) + [c for c in ("Year", "Session") if c in spec["onehot"]]
     onehot = [c for c in spec["onehot"] if c not in ("Year", "Session")]
     return build_preprocessor(numeric, onehot, spec["rep_cols"], rep_method="mean",
-                              rep_shrink=5.0, rep_count=True, scale=False)
+                              rep_shrink=5.0, rep_count=True, rep_adjust=spec.get("rep_adjust"),
+                              scale=False)
 
 
 def lgbm_model(fs="F3", n_iter=25, inner_cv=4):

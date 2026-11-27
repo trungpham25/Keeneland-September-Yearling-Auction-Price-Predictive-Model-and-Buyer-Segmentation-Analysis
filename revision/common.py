@@ -218,11 +218,19 @@ class CrossFitReputation(BaseEstimator, TransformerMixin):
     n_splits-1 folds. transform (called on validation/test data) uses the
     table built from all training rows. A count feature log(1+n) of prior
     observations is also returned for each key when add_count=True.
+
+    adjust_cols (e.g. ("Year", "Session")): build reputation from prices
+    relative to the mean of their year x session cell instead of raw prices,
+    so the score measures how a sire's (dam's, consignor's) yearlings sell
+    *within* their session rather than which sessions they are placed in. Cell
+    means come from the training rows only (per fold when cross-fitting).
     """
 
     def __init__(self, cols=("Sire_key",), method="index", shrink=0.0,
-                 min_n=None, n_splits=5, add_count=False, random_state=SEED):
+                 min_n=None, n_splits=5, add_count=False, adjust_cols=None,
+                 random_state=SEED):
         self.cols = cols
+        self.adjust_cols = adjust_cols
         self.min_n = min_n
         self.method = method
         self.shrink = shrink
@@ -240,8 +248,18 @@ class CrossFitReputation(BaseEstimator, TransformerMixin):
             return self.min_n.get(col, 1)
         return self.min_n or 1
 
+    def _residualize(self, X_fit, y_fit, X_apply=None):
+        """y minus training-cell mean (cells = adjust_cols); unseen cells use
+        the training grand mean."""
+        if not self.adjust_cols:
+            return y_fit
+        cells = pd.DataFrame(X_fit)[list(self.adjust_cols)].astype(str).agg("|".join, axis=1).values
+        means = pd.Series(y_fit).groupby(cells).mean()
+        return y_fit - pd.Series(cells).map(means).fillna(np.mean(y_fit)).values
+
     def fit(self, X, y):
         X = pd.DataFrame(X)
+        y = self._residualize(X, np.asarray(y, float))
         self.tables_ = {}
         for c in self.cols:
             tab, prior = reputation_table(y, X[c].values, self.method, self._shrink_for(c), self._min_n_for(c))
@@ -272,8 +290,9 @@ class CrossFitReputation(BaseEstimator, TransformerMixin):
         kf = KFold(self.n_splits, shuffle=True, random_state=self.random_state)
         for tr, te in kf.split(X):
             j = 0
+            y_tr = self._residualize(X.iloc[tr], y[tr])
             for c in self.cols:
-                tab, prior = reputation_table(y[tr], X[c].values[tr], self.method, self._shrink_for(c), self._min_n_for(c))
+                tab, prior = reputation_table(y_tr, X[c].values[tr], self.method, self._shrink_for(c), self._min_n_for(c))
                 counts = X[c].iloc[tr].value_counts().to_dict()
                 s, n = self._lookup(X[c].values[te], tab, prior, counts)
                 res[te, j] = s
@@ -334,7 +353,7 @@ def fmt_table(df: pd.DataFrame, floatfmt=".4f") -> str:
 # Preprocessing builder
 # ---------------------------------------------------------------------------
 def build_preprocessor(numeric, onehot=(), rep_cols=(), rep_method="index",
-                       rep_shrink=0.0, rep_min_n=None, rep_count=False, scale=True,
+                       rep_shrink=0.0, rep_min_n=None, rep_count=False, rep_adjust=None, scale=True,
                        passthrough=()):
     """ColumnTransformer: imputation/scaling for numeric columns, one-hot for
     categoricals, cross-fitted reputation for grouping keys. Everything is
@@ -355,10 +374,11 @@ def build_preprocessor(numeric, onehot=(), rep_cols=(), rep_method="index",
                                                  sparse_output=False), list(onehot)))
     if rep_cols:
         rep = CrossFitReputation(cols=tuple(rep_cols), method=rep_method,
-                                 shrink=rep_shrink, min_n=rep_min_n, add_count=rep_count)
+                                 shrink=rep_shrink, min_n=rep_min_n, add_count=rep_count,
+                                 adjust_cols=tuple(rep_adjust) if rep_adjust else None)
         if scale:
             rep = Pipeline([("rep", rep), ("sc", StandardScaler())])
-        transformers.append(("rep", rep, list(rep_cols)))
+        transformers.append(("rep", rep, list(rep_cols) + [c for c in (rep_adjust or []) if c not in rep_cols]))
     if passthrough:
         transformers.append(("pt", "passthrough", list(passthrough)))
     return ColumnTransformer(transformers, verbose_feature_names_out=False)
