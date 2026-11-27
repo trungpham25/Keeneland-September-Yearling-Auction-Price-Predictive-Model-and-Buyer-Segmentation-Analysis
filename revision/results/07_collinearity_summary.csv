@@ -1,0 +1,5 @@
+Design,columns,max VIF (single cols),terms with VIF > 5,condition number,harmful near-dependencies,sign flips
+P: Published Ridge design,20,3.6764525761660702,0,12.124849794321955,0,1
+S2: Revised clean design (S2),32,4.041216647334191,0,16.730656819215156,0,1
+S2r: S2 without derived dosage summaries,30,1.91700256439832,0,16.72036633912649,0,1
+S1: S1 (S2 + sire/BS progeny stats),40,7.404689537896551,4,18.017963878203354,0,2

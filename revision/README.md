@@ -15,6 +15,7 @@ python 03_temporal.py                # train on earlier years, predict a later s
 python 04_inference_and_sessions.py  # OLS with clustered SEs, session heterogeneity, permutation importance
 python 05_summary.py                 # paired fold comparisons + figure
 python 06_leakage_checks.py          # automated leakage test suite (35 checks)                    (~3 min)
+python 07_collinearity.py            # VIF / GVIF, condition indices, sign flips, suppression checks
 ```
 
 All output tables are in `results/` (Markdown and CSV).
@@ -122,15 +123,51 @@ The unforecastable year-level market shift costs less than 0.005 R². Prediction
   session, sire reputation still matters, but much less.
 - **Dam Reputation is weak** once its leak is removed (+0.017, p = 0.07 with session FE). Permutation
   importance ≈ 0. Most dams have no other sales in the sample to build a reputation from.
-- Consignor reputation (+0.09 per SD), colts (+0.11 log points ≈ +11%) and sire-new-to-sale (+0.09) stay
-  significant with session FE. Dosage terms are small.
+- Consignor reputation (+0.09 per SD) and colts (+0.11 log points ≈ +11%) stay significant with session FE.
+  Dosage terms are small. The derived Dosage Index and Center of Distribution are left out of the coefficient
+  table because they are functions of the five dosage points (Section 5).
+- Sire-new-to-sale (+0.09) is a **suppression effect**, not a novelty premium. It's positive only after
+  controlling for sire reputation (0.02, p = 0.65 without it), and the raw gap within the same year and session is
+  +0.008.
 - **The sire-reputation slope falls across books**: 0.33 (Sessions 1–2), then 0.31, 0.27, 0.21, 0.17, down to 0.03
   (Sessions 11–12). The Wald test that the slopes are equal gives p = 0.0001. Caveat: sessions are assigned partly
   on expected value, so within-session slopes are affected by that selection.
 - **Accuracy by session**: RMSE rises from about 0.62 (Session 1) to 0.90–0.97 (Sessions 6–9). Median absolute
   dollar error rises from 37% to 55%. Within-session R² is 0.07–0.21; the paper's 0.21–0.37 was inflated by leakage.
 
-## 5. What this means for the paper's ML sections
+## 5. Collinearity — `results/07_collinearity.md`
+
+| Design | Columns | Max VIF | Terms with VIF > 5 | Condition number | Harmful near-dependencies (Belsley) | Significant sign flips |
+|---|---|---|---|---|---|---|
+| Published Ridge design | 20 | 3.7 | 0 | 12.1 | 0 | 1 (first-crop flag) |
+| Revised clean S2 (prediction) | 32 | 4.0 | 0 | 16.7 | 0 | 1 (sire new to sale) |
+| S2 without derived dosage summaries (coefficient table) | 30 | 1.9 | 0 | 16.7 | 0 | 1 (sire new to sale) |
+| S1 (+ hindsight sire/BS stats) | 40 | 7.4 | 4 | 18.0 | 0 | 2 |
+
+- **No harmful collinearity in the revised clean model.** The only condition index above 15 comes from the
+  intercept versus the session dummies, which is how dummy coding always looks; it doesn't inflate any coefficient
+  of interest.
+- **Derived dosage summaries are redundant.** Dosage Index recomputed from the five points matches the column with
+  correlation 1.000000; Center of Distribution matches at 0.9999. Including them doubles the VIFs of the dosage
+  points (Classic 1.5 → 3.4) and shifts their coefficients. They are dropped from the coefficient table.
+  Prediction is unaffected (Ridge R² 0.6334 vs 0.6336).
+- **The sire/BS progeny statistics (S1 only) form a collinear cluster.** VIFs are 5–7.4, pairwise r is up to 0.87,
+  and earnings per starter flips sign. Their individual coefficients can't be interpreted; use them only for
+  prediction.
+- **Session vs sire reputation is confounding, not variance inflation.** Session explains 43% of Sire Reputation
+  (VIF ≈ 1.8), so the coefficient is precise in both specifications. It moves from 0.81 to 0.24 because it
+  measures different things: the total association versus the association within a session.
+- **The paper's first-crop coefficient (+0.373 published; +0.41 reproduced) is a suppression artefact.** Within each
+  year, first-crop yearlings sell for *less* (−0.19 with year FE only). The coefficient turns positive only after
+  conditioning on sire reputation, sire starters and black-type rate, which are mechanically low for young sires.
+  It is not evidence of a speculative premium. The same mechanism produces the revised sire-new-to-sale
+  coefficient.
+- **The paper's cross statistics:** `log_Combo_starters` and `log_Combo_earnings` correlate at 0.78, and starters
+  correlates at 0.94 with cross size. In the reproduction, starters goes from +0.235 (bivariate) to −0.003 (not
+  significant). The published −0.334 is consistent with collinearity-driven sign instability, on top of the
+  own-record leak.
+
+## 6. What this means for the paper's ML sections
 
 1. **Headline:** about 0.62 out-of-sample R² when predicting the next sale from catalog information (0.64 in
    nested CV), not 0.54. The published predictors alone reach only about 0.34–0.43 without leakage.
@@ -143,7 +180,7 @@ The unforecastable year-level market shift costs less than 0.005 R². Prediction
    cross statistics are excluded because they contain the horse's own racing record, and that all tuning is
    nested.
 
-## 6. Remaining limitations (cannot be fixed with `sold.csv`)
+## 7. Remaining limitations (cannot be fixed with `sold.csv`)
 
 - **Dated pedigree statistics.** To use sire and broodmare-sire records without hindsight, the paper needs
   Equineline snapshots as of each catalog date. The S1 results bound the gain from those statistics at about

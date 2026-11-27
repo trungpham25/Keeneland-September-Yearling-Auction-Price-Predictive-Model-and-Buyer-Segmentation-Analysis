@@ -43,8 +43,11 @@ df["Sire_Reputation"], df["Dam_Reputation"], df["Consignor_Reputation"] = R.T
 
 # Clean (S2) specification: no cross statistics (own racing record) and no
 # progeny statistics pulled after the sale.
+# Dosage Index and Center of Distribution are deterministic functions of the
+# five dosage points (Step 7), so they are left out of the coefficient table
+# to avoid inflating the dosage-point variances; prediction is unaffected.
 cont = ["Sire_Reputation", "Dam_Reputation", "Consignor_Reputation"] + [
-    c for c in DOSAGE if c != "Dosage_missing"]
+    c for c in DOSAGE if c not in ("Dosage_missing", "Dosage_Index", "Center_of_Distribution")]
 binary = ["Is_male", "Sire_new_to_sale", "Dosage_missing"]
 X0 = df[cont].copy()
 X0 = X0.fillna(X0.median())
@@ -182,7 +185,11 @@ with open(f"{RESULTS}/04_inference_and_sessions.md", "w") as f:
             "racing record, and no progeny statistics pulled after the sale). "
             "Reputation indices are cross-fitted (no horse's own price enters its index). Continuous predictors "
             "standardized; coefficients are changes in log price per 1 SD. Year FE in both columns; "
-            f"session FE in the second. R2: {fit_a.rsquared:.3f} without session FE, {fit_b.rsquared:.3f} with.\n\n")
+            f"session FE in the second. R2: {fit_a.rsquared:.3f} without session FE, {fit_b.rsquared:.3f} with. "
+            "Derived dosage summaries (Dosage Index, Center of Distribution) are omitted because they are "
+            "functions of the five dosage points. All VIFs < 2 (Step 7). The Sire-new-to-sale coefficient is a "
+            "suppression effect (positive only conditional on Sire Reputation; see Step 7) and should not be read "
+            "as a novelty premium.\n\n")
     f.write(fmt_table(compact) + "\n\n")
     f.write(f"## (b-i) Accuracy by session (out-of-fold predictions of `{model_col}` from Step 2)\n\n")
     f.write("RMSE is comparable across sessions; within-session R2 is not, because it divides by each "

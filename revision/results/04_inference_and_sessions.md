@@ -2,23 +2,21 @@
 
 ## (a) OLS coefficients, cluster-robust SEs by sire (N = 6,416)
 
-Clean specification S2: catalog information only (no cross statistics, which contain the horse's own racing record, and no progeny statistics pulled after the sale). Reputation indices are cross-fitted (no horse's own price enters its index). Continuous predictors standardized; coefficients are changes in log price per 1 SD. Year FE in both columns; session FE in the second. R2: 0.396 without session FE, 0.632 with.
+Clean specification S2: catalog information only (no cross statistics, which contain the horse's own racing record, and no progeny statistics pulled after the sale). Reputation indices are cross-fitted (no horse's own price enters its index). Continuous predictors standardized; coefficients are changes in log price per 1 SD. Year FE in both columns; session FE in the second. R2: 0.396 without session FE, 0.632 with. Derived dosage summaries (Dosage Index, Center of Distribution) are omitted because they are functions of the five dosage points. All VIFs < 2 (Step 7). The Sire-new-to-sale coefficient is a suppression effect (positive only conditional on Sire Reputation; see Step 7) and should not be read as a novelty premium.
 
 | Predictor | coef (no session FE) | SE  | p  | coef (session FE) | SE | p |
 |---|---|---|---|---|---|---|
-| Sire_Reputation | 0.8101 | 0.0170 | 0.0000 | 0.2390 | 0.0203 | 0.0000 |
-| Dam_Reputation | 0.0401 | 0.0123 | 0.0012 | 0.0169 | 0.0095 | 0.0747 |
-| Consignor_Reputation | 0.1730 | 0.0169 | 0.0000 | 0.0883 | 0.0130 | 0.0000 |
-| Brilliant | -0.0107 | 0.0273 | 0.6954 | -0.0246 | 0.0204 | 0.2281 |
-| Intermediate | 0.0507 | 0.0202 | 0.0120 | 0.0470 | 0.0150 | 0.0018 |
-| Classic | 0.0091 | 0.0292 | 0.7550 | -0.0112 | 0.0215 | 0.6017 |
-| Solid | -0.0156 | 0.0215 | 0.4663 | -0.0319 | 0.0146 | 0.0294 |
-| Professional | 0.0086 | 0.0139 | 0.5366 | 0.0024 | 0.0122 | 0.8426 |
-| Dosage_Index | 0.0194 | 0.0229 | 0.3973 | 0.0206 | 0.0141 | 0.1450 |
-| Center_of_Distribution | 0.0103 | 0.0310 | 0.7404 | -0.0256 | 0.0208 | 0.2190 |
-| Is_male | 0.1782 | 0.0320 | 0.0000 | 0.1085 | 0.0227 | 0.0000 |
-| Sire_new_to_sale | 0.1941 | 0.0573 | 0.0007 | 0.0925 | 0.0377 | 0.0143 |
-| Dosage_missing | 0.0704 | 0.0669 | 0.2923 | 0.0424 | 0.0474 | 0.3708 |
+| Sire_Reputation | 0.8088 | 0.0172 | 0.0000 | 0.2403 | 0.0205 | 0.0000 |
+| Dam_Reputation | 0.0402 | 0.0123 | 0.0011 | 0.0167 | 0.0095 | 0.0786 |
+| Consignor_Reputation | 0.1728 | 0.0169 | 0.0000 | 0.0883 | 0.0131 | 0.0000 |
+| Brilliant | -0.0002 | 0.0190 | 0.9915 | -0.0383 | 0.0158 | 0.0152 |
+| Intermediate | 0.0635 | 0.0181 | 0.0005 | 0.0531 | 0.0120 | 0.0000 |
+| Classic | -0.0099 | 0.0188 | 0.5976 | -0.0057 | 0.0156 | 0.7153 |
+| Solid | -0.0217 | 0.0180 | 0.2289 | -0.0258 | 0.0129 | 0.0456 |
+| Professional | 0.0057 | 0.0134 | 0.6677 | 0.0050 | 0.0115 | 0.6655 |
+| Is_male | 0.1780 | 0.0320 | 0.0000 | 0.1090 | 0.0226 | 0.0000 |
+| Sire_new_to_sale | 0.1940 | 0.0573 | 0.0007 | 0.0944 | 0.0378 | 0.0125 |
+| Dosage_missing | 0.0626 | 0.0667 | 0.3479 | 0.0424 | 0.0476 | 0.3733 |
 
 ## (b-i) Accuracy by session (out-of-fold predictions of `ensemble_S2` from Step 2)
 
@@ -43,14 +41,14 @@ RMSE is comparable across sessions; within-session R2 is not, because it divides
 
 | Book | Sire Rep slope (per full-sample SD) | SE | Within-book SD of Sire Rep (rel. to full sample) |
 |---|---|---|---|
-| S1-2 | 0.333 | 0.031 | 0.878 |
-| S3-4 | 0.313 | 0.031 | 0.913 |
-| S5-6 | 0.274 | 0.037 | 0.841 |
+| S1-2 | 0.335 | 0.031 | 0.878 |
+| S3-4 | 0.314 | 0.031 | 0.913 |
+| S5-6 | 0.275 | 0.037 | 0.841 |
 | S7-8 | 0.207 | 0.036 | 0.717 |
-| S9-10 | 0.168 | 0.040 | 0.626 |
+| S9-10 | 0.169 | 0.040 | 0.626 |
 | S11-12 | 0.031 | 0.059 | 0.593 |
 
-Cluster-robust Wald test that all Sire Rep x Book interactions are zero: F = 26.43, p = 0.0001.
+Cluster-robust Wald test that all Sire Rep x Book interactions are zero: F = 26.44, p = 0.0001.
 
 ## (c) Grouped permutation importance (mean drop in out-of-fold R2 over 5 outer folds)
 
