@@ -112,6 +112,42 @@ EXTRA_PEDIGREE = [
     "Sire_unraced_progeny", "log_Combo_foals",
 ]
 
+# ---------------------------------------------------------------------------
+# Timing of information (see 06_leakage_checks.py for the evidence)
+# ---------------------------------------------------------------------------
+# The Equineline progeny statistics in sold.csv were pulled once, after the
+# 2024 sale (horses sold in 2024 show 0% starters, those sold in 2020-2022
+# show 75-90%). Two consequences:
+#
+# OWN_OUTCOME: sire x broodmare-sire "cross" statistics. For 21% of rows the
+#   cross has a single foal - the yearling itself - so these columns contain
+#   the horse's own post-sale racing record. Never usable as predictors.
+OWN_OUTCOME = [
+    "Combo_foals", "Combo_starters", "Combo_winners", "Combo_BW", "Combo_earnings",
+    "Combo_aei", "log_Combo_foals", "log_Combo_starters", "log_Combo_earnings",
+]
+# HINDSIGHT: sire and broodmare-sire progeny statistics. They include racing
+#   by crops that ran after the sale (the horse's own share is negligible for
+#   sires with hundreds of starters, but the statistics reflect information
+#   buyers did not have). Usable only in a sensitivity analysis.
+HINDSIGHT = [
+    "Sire_starters", "Sire_winners", "Sire_BW", "Sire_earnings", "Sire_aei",
+    "BS_foals", "BS_starters", "BS_winners", "BS_BW", "BS_earnings", "BS_aei",
+    "log_Sire_starters", "log_BS_foals", "log_BS_starters", "log_Sire_earnings",
+    "log_BS_earnings", "Sire_BW_rate", "BS_BW_rate", "Sire_win_rate", "BS_win_rate",
+    "log_Sire_earn_per_starter", "log_BS_earn_per_starter", "Sire_unraced_progeny",
+]
+# Outcome or post-sale columns that must never be model inputs.
+FORBIDDEN = ["Price", "Log_Price", "y", "Purchaser", "Horse Name"]
+
+# Catalog-safe pedigree descriptors (fixed by the pedigree itself).
+DOSAGE = ["Brilliant", "Intermediate", "Classic", "Solid", "Professional",
+          "Dosage_Index", "Center_of_Distribution", "Dosage_missing"]
+# Sire/broodmare-sire record, used only in the hindsight sensitivity set.
+SIRE_BS_STATS = ["Sire_BW_rate", "log_Sire_starters", "Sire_aei", "Sire_win_rate",
+                 "log_Sire_earn_per_starter", "log_BS_foals", "BS_BW_rate", "BS_aei",
+                 "BS_win_rate", "log_BS_earn_per_starter"]
+
 
 # ---------------------------------------------------------------------------
 # Reputation indices

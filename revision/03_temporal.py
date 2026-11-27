@@ -23,10 +23,12 @@ df = load_data()
 TEST_YEARS = [2022, 2023, 2024]
 MODELS = {
     "Ridge, published predictors (F0)": lambda: linear_model("F0", "ridge"),
-    "Ridge, F2": lambda: linear_model("F2", "ridge"),
-    "LightGBM, F3": lambda: lgbm_model("F3", n_iter=20),
-    "CatBoost, F3": lambda: catboost_model("F3", n_iter=6),
+    "Ridge, S2 (clean)": lambda: linear_model("S2", "ridge"),
+    "LightGBM, S2 (clean)": lambda: lgbm_model("S2", n_iter=20),
+    "CatBoost, S2 (clean)": lambda: catboost_model("S2", n_iter=6),
+    "Ridge, S1 (clean + hindsight stats)": lambda: linear_model("S1", "ridge"),
 }
+ENS = ["Ridge, S2 (clean)", "LightGBM, S2 (clean)", "CatBoost, S2 (clean)"]
 
 rows, cover_rows = [], []
 for t in TEST_YEARS:
@@ -46,20 +48,20 @@ for t in TEST_YEARS:
         r["mean_bias"] = -shift
         rows.append({"Test year": t, "Train years": f"2020-{t - 1}", "Model": name, "n_test": len(te), **r})
         print(t, name, round(r["R2"], 4), flush=True)
-    ens = np.mean([preds["Ridge, F2"], preds["LightGBM, F3"], preds["CatBoost, F3"]], axis=0)
+    ens = np.mean([preds[k] for k in ENS], axis=0)
     r = metrics(te["y"], ens)
     shift = np.mean(te["y"] - ens)
     r["R2_level_adj"] = metrics(te["y"], ens + shift)["R2"]
     r["mean_bias"] = -shift
-    rows.append({"Test year": t, "Train years": f"2020-{t - 1}", "Model": "Average ensemble",
+    rows.append({"Test year": t, "Train years": f"2020-{t - 1}", "Model": "Average ensemble, S2 (clean)",
                  "n_test": len(te), **r})
 
-    # --- Split-conformal intervals for the Ridge F2 model ------------------
+    # --- Split-conformal intervals for the clean Ridge S2 model ------------
     # Calibration residuals: cross-fitted predictions on the training years.
-    cal_pred = cross_val_predict(linear_model("F2", "ridge"), tr, tr["y"],
+    cal_pred = cross_val_predict(linear_model("S2", "ridge"), tr, tr["y"],
                                  cv=KFold(5, shuffle=True, random_state=SEED))
     abs_res = np.abs(tr["y"].values - cal_pred)
-    p_te = preds["Ridge, F2"]
+    p_te = preds["Ridge, S2 (clean)"]
     for level in (0.80, 0.90):
         q = np.quantile(abs_res, level * (1 + 1 / len(abs_res)))
         cov = np.mean(np.abs(te["y"].values - p_te) <= q)
@@ -90,7 +92,7 @@ with open(f"{RESULTS}/03_temporal.md", "w") as f:
             "year's effect; `R2_level_adj` removes that unforecastable common shift.\n\n")
     f.write(fmt_table(res.set_index("Test year")) + "\n\n")
     f.write("## Average over the three test years\n\n" + fmt_table(avg) + "\n\n")
-    f.write("## Split-conformal prediction intervals (Ridge F2)\n\n")
+    f.write("## Split-conformal prediction intervals (Ridge S2)\n\n")
     f.write("Calibrated on cross-fitted residuals from the training years, evaluated on the held-out year. "
             "Bands are multiplicative on price.\n\n")
     f.write(fmt_table(cov.set_index("Test year"), floatfmt=".3f") + "\n")

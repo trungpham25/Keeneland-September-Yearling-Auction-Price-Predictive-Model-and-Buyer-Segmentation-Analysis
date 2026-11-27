@@ -9,11 +9,12 @@ Everything runs from `sold.csv` (6,416 sold yearlings, 2020–2024):
 ```bash
 pip install -r revision/requirements.txt
 cd revision
-python 01_leakage_audit.py         # reproduce the published Ridge and remove each leak in turn  (~4 min)
-python 02_nested_cv.py             # nested-CV comparison of feature sets and models            (~30 min, cached in results/oof/)
-python 03_temporal.py              # train on earlier years, predict a later sale; conformal intervals (~6 min)
+python 01_leakage_audit.py           # reproduce the published Ridge and remove each leak in turn   (~4 min)
+python 02_nested_cv.py               # nested-CV comparison of feature sets and models             (~50 min, cached in results/oof/)
+python 03_temporal.py                # train on earlier years, predict a later sale; conformal intervals (~8 min)
 python 04_inference_and_sessions.py  # OLS with clustered SEs, session heterogeneity, permutation importance
-python 05_summary.py               # paired fold comparisons + figure
+python 05_summary.py                 # paired fold comparisons + figure
+python 06_leakage_checks.py          # automated leakage test suite (35 checks)                    (~3 min)
 ```
 
 All output tables are in `results/` (Markdown and CSV).
@@ -26,105 +27,129 @@ All output tables are in `results/` (Markdown and CSV).
 |---|---|
 | Published Ridge (as reported) | 0.540 |
 | Published pipeline, reproduced here | 0.545 (α ≈ 1.42 vs 1.451 published) |
-| Same model, leaks removed | **0.39** |
-| Revised Ridge (adds session + consignor), nested CV | **0.637** (SE 0.009) |
-| Revised ensemble (Ridge + LightGBM + CatBoost), nested CV | **0.645** (SE 0.009) |
-| Revised ensemble, predicting a later sale year (2022–2024 avg) | **0.626** |
-| Revised Ridge, predicting a later sale year | **0.622** |
+| Same model, reputation and outlier leaks removed | **0.39** |
+| **Clean** Ridge (catalog-only inputs), nested CV | **0.633** (SE 0.009) |
+| **Clean** ensemble (Ridge + LightGBM + CatBoost), nested CV | **0.640** (SE 0.009) |
+| **Clean** ensemble, predicting a later sale year from earlier years only (2022–24 avg) | **0.619** |
+| **Clean** Ridge, predicting a later sale year | **0.615** |
 
-The published 0.54 was inflated by leakage. With the leaks removed, the published predictors explain only about
-39–43% of the variation. Adding the **sale session** fixes that and more: the revised model scores about 0.64 under
-honest evaluation, and holds up when trained on earlier years and used to predict a later sale.
+"Clean" means the model uses only information printed in the catalog before bidding:
+- session, year, sex, color and dosage profile;
+- sire, dam and consignor reputation, built from *other* horses' prices only.
 
-## 2. Problems in the published ML pipeline and how each was fixed
+All **35 automated leakage checks pass** (`results/06_leakage_checks.md`).
 
-| # | Problem in the paper | Evidence | Fix in this revision |
+**The year-ahead number (≈ 0.62) is the cleanest estimate** and should be the headline. It uses only sales from
+earlier years, exactly what a buyer would have.
+
+## 2. Leakage found and removed
+
+Three sources of leakage affect the published model. All three are removed in the clean specification.
+
+| Leak | Evidence | Effect | Fix |
 |---|---|---|---|
-| 1 | **Target leakage in reputation indices.** Sire and Dam Reputation are computed from offspring log prices on the full sample. Each horse's own price, including test-set horses, enters its own predictors. | 27% of horses have a dam with exactly two yearlings in the sample, so their Dam Reputation is built from two prices, one being their own. Correlation with own price is 0.79. Removing this leak alone drops test R² from 0.479 to 0.393 (`results/01_leakage_audit.md`). | Reputation is **cross-fitted**: training rows get scores from the other folds, and predicted rows get scores from the training data only (`common.CrossFitReputation`). In the year-ahead test, scores come from earlier sales only. |
-| 2 | **Outlier removal on the full sample using the outcome.** Rows are dropped by Cook's distance before the train/test split, so hard-to-predict horses are removed from the test set. | Reproducing the D > 4/n rule removes 315 rows; scoring on all rows drops R² from 0.545 to 0.479. | No price-based exclusions. Every one of the 6,416 horses is scored. Robustness is checked with Huber loss instead (R² 0.634, no gain). |
-| 3 | **Feature screening and power transforms fitted on the full sample.** | Paper Sections 3.1–3.2. | Fixed outcome-free transforms (log1p). Feature sets are fixed in advance and compared by nested CV. All imputation, scaling, encoding and tuning happen inside the training folds (`sklearn` Pipelines). |
-| 4 | **Sale session left out as a predictor**, even though Figure 1 shows it's the main source of price differences. Session is printed in the catalog before bidding, so using it is legitimate. | Adding session raises leak-free R² by 0.203, and every fold improves (`results/05_paired_comparisons.md`). Permutation importance: session ≈ 0.75 R², the next group ≈ 0.03. | Session enters as fixed effects (linear models) or as an ordinal variable (trees). The consigning agency's reputation is also added (cross-fitted). It adds +0.005 R², improving all 5 folds. |
-| 5 | **First-crop flag is mismeasured.** "First crop" = first year the sire appears in the 2020–2024 data, so **100% of 2020 horses are flagged**, versus 16–29% in other years. The published coefficient (0.373) is mixed up with the 2020 baseline and the year effects. | `common.load_data` | Replaced by "sire new to the sale" (no yearlings in any *earlier* sample year), defined from 2021 on. A true first-crop flag needs the sire's first-crop year from Equineline. |
-| 6 | **Ridge chosen for "inference", with bootstrap p-values on penalized coefficients.** At α ≈ 1.45 and n ≈ 3,500 the Ridge is essentially OLS, and bootstrap CIs around a penalized estimator aren't valid. | Ridge and OLS give identical R² (0.6366 vs 0.6366). | Prediction and interpretation are separated. Interpretation uses **OLS with standard errors clustered by sire** (yearlings by the same sire share unobserved factors) on cross-fitted reputation scores (`results/04_inference_and_sessions.md`). |
-| 7 | **Session-level Ridge fits are not comparable.** Each session gets its own α (0.72 to 42.9), so coefficients are shrunk by different amounts. Within-session R² is also compared across sessions with very different price variance. | Paper Table 6. | One pooled model, with **Sire Rep × Book interactions and a cluster-robust Wald test**. Session accuracy is reported as RMSE (comparable across sessions) with bootstrap CIs, from one pooled model's out-of-fold predictions. |
-| 8 | **Leave-one-year-out with year fixed effects is ill-defined.** The held-out year's effect can't be estimated. Also, training on future years to predict the past isn't a forecast. | Paper Section 4.4. | **Rolling-origin evaluation**: train on years before t, predict year t (2022, 2023, 2024). Test rows get the latest year's market level, and the unforecastable shift is reported separately. |
-| 9 | **Inconsistent evaluation description** ("60/20/20 split" vs "15-fold CV"; CV SE 0.0075 in Table 2 vs ±0.0279 in Table 3). | Paper Tables 2–3. | One clearly defined protocol: 5-fold outer CV stratified by session, with 4–5-fold inner CV for tuning. Every horse is predicted exactly once by a model that never saw its price. |
-| 10 | **No uncertainty for individual predictions**, although the paper pitches "pricing benchmarks". | — | **Split-conformal prediction intervals**, calibrated on earlier years and checked on the next year: 90% intervals cover 88–93% (`results/03_temporal.md`). |
+| **(a) Own price in reputation indices.** Sire and Dam Reputation were computed from offspring prices on the full sample, including each horse's own price. | 27% of horses have a dam with exactly two yearlings in the data, so their Dam Reputation comes from two prices, one being their own. Correlation with own price is 0.79. In the published-style index, raising one horse's price moves its own Dam Reputation (T2 in `06_leakage_checks.md`). | R² 0.479 → 0.393 | Reputation is **cross-fitted**: training rows get scores from the other folds, and predicted rows get scores from the training data only. In the year-ahead test, scores come from earlier sales only. |
+| **(b) Outlier removal using the outcome on the full sample.** Cook's-distance filtering before the split took hard-to-predict horses out of the test set. | D > 4/n removes 315 rows. | R² 0.545 → 0.479 | No price-based exclusions. All 6,416 horses are scored. |
+| **(c) Post-sale racing data in the pedigree statistics.** The Equineline file was compiled after the 2024 sale. The **sire × broodmare-sire cross statistics** (`Combo_*`) include the horse's own racing career: for 21% of horses the cross has a single foal, the horse itself. | Among those horses, the cross "has a starter" for 81–90% of 2020–22 sales and 0% of 2024 sales. Yearlings can't have raced at the sale. The `Horse Name` column also holds post-sale race names. The sire and broodmare-sire statistics were pulled at the same time, so they include crops that raced after the sale. | Small: about −0.004 R² when removed (`05_paired_comparisons.md`). The published coefficients on `Combo_starters` (−0.334) and `Combo_earnings` (+0.254) partly measure the horse's own career, though. | Cross statistics are **excluded** from all clean models (`common.OWN_OUTCOME`). Sire and broodmare-sire statistics (`common.HINDSIGHT`) appear only in the S1 sensitivity set. |
 
-## 3. Main results of the revised analysis
+### Automated checks (`06_leakage_checks.py`)
 
-### 3.1 Model comparison (nested CV, N = 6,416) — `results/02_nested_cv.md`
+| Test | What would fail if there were leakage | Result |
+|---|---|---|
+| T1 Input audit | Any model reading price, purchaser or name columns; clean sets reading cross or hindsight stats | 21/21 pass |
+| T2 Encoder | A horse's own reputation score changing when its own price changes | pass (max change 0) |
+| T3 Test-label invariance | Test predictions changing when test prices are scrambled (random and year-ahead splits; Ridge, LightGBM, CatBoost) | 8/8 pass (difference exactly 0) |
+| T4 Null test | CV R² above 0 when prices are randomly permuted across horses | pass (R² −0.005 to −0.046) |
+| T6 Duplicates | The same horse appearing twice | pass (0) |
+
+**Remaining non-code caveat:** in random K-fold CV, a horse's sire, dam or consignor reputation can use horses
+sold at the same sale or in later years. That isn't the horse's own price, but buyers wouldn't know it before
+bidding. The year-ahead evaluation removes this, and it costs only about 0.02 R² (0.640 → 0.619).
+
+## 3. Other problems in the published ML pipeline and how each was fixed
+
+| # | Problem | Fix |
+|---|---|---|
+| 1 | **Sale session left out as a predictor**, although Figure 1 shows it's the main source of price differences and it's in the catalog before bidding. | Session fixed effects (linear models) or an ordinal variable (trees). Adds +0.203 R², improving all 5 folds. The consigning agency's reputation (cross-fitted) adds another +0.005, also in all 5 folds. |
+| 2 | **First-crop flag mismeasured.** "First year the sire appears in 2020–24" marks 100% of 2020 horses, against 16–29% in other years, so it's mixed up with the 2020 baseline. | Replaced by "sire new to the sale" (no yearlings in any earlier sample year), defined from 2021 on. A true first-crop flag needs dated Equineline data. |
+| 3 | **Feature screening and power transforms fitted on the full sample.** | Feature sets fixed in advance. Fixed transforms (log1p). All imputation, scaling, encoding and tuning sit inside `sklearn` Pipelines and are refitted on each training fold. |
+| 4 | **Bootstrap p-values on penalized Ridge coefficients.** At α ≈ 1.45 with n ≈ 3,500 the Ridge is essentially OLS, and bootstrap CIs around a penalized estimator aren't valid. | Interpretation uses OLS with standard errors clustered by sire, on cross-fitted reputation scores and the clean S2 inputs. |
+| 5 | **Session-level Ridge fits not comparable** (α from 0.72 to 42.9; within-session R² compared across sessions with different variances). | One pooled model with Sire Rep × Book interactions and a cluster-robust Wald test. Session accuracy is reported as RMSE with bootstrap CIs, from one pooled model's out-of-fold predictions. |
+| 6 | **Leave-one-year-out with year effects is ill-defined**, and trains on future years to predict the past. | Rolling-origin test: train on years before t, predict year t (2022–24). |
+| 7 | **Inconsistent evaluation description** ("60/20/20" vs "15-fold"; CV SE 0.0075 vs ±0.0279). | One protocol: 5-fold outer CV stratified by session, 4–5-fold inner CV for tuning. |
+| 8 | **No uncertainty for individual predictions.** | Split-conformal prediction intervals calibrated on earlier years: 90% intervals cover 89–93% of the next year's horses. |
+
+## 4. Main results (clean specification)
+
+### 4.1 Nested CV, N = 6,416 — `results/02_nested_cv.md`
 
 | Model | Features | R² | SE | RMSE | MAE | Median abs. % error ($) |
 |---|---|---|---|---|---|---|
-| Ridge | F0: published predictors (leak-free) | 0.429 | 0.010 | 1.072 | 0.851 | 59.6% |
-| LightGBM | F0 | 0.452 | 0.009 | 1.050 | 0.824 | 58.8% |
-| Ridge | F1: + session | 0.632 | 0.009 | 0.860 | 0.665 | 48.5% |
-| Ridge | F2: + consignor reputation | 0.637 | 0.009 | 0.854 | 0.661 | 48.4% |
-| Ridge | F3: + extra pedigree, color, counts | 0.637 | 0.009 | 0.855 | 0.662 | 48.5% |
-| Random forest | F3 | 0.635 | 0.009 | 0.856 | 0.664 | 48.9% |
-| XGBoost | F3 | 0.640 | 0.009 | 0.850 | 0.658 | 47.9% |
-| LightGBM | F3 | 0.641 | 0.009 | 0.849 | 0.657 | 48.0% |
-| CatBoost (native target stats) | F3 | 0.643 | 0.010 | 0.847 | 0.656 | 48.1% |
-| **Average ensemble** | F3 | **0.645** | 0.009 | 0.845 | 0.654 | 47.7% |
+| Ridge | F0: published predictors, reputation leak removed | 0.429 | 0.010 | 1.072 | 0.851 | 59.6% |
+| Ridge | **S2: clean, catalog-only** | 0.633 | 0.009 | 0.858 | 0.665 | 48.4% |
+| LightGBM | S2 | 0.636 | 0.008 | 0.855 | 0.662 | 48.6% |
+| CatBoost (native target stats) | S2 | 0.638 | 0.009 | 0.853 | 0.662 | 48.4% |
+| **Average ensemble** | S2 | **0.640** | 0.009 | 0.851 | 0.659 | 48.3% |
+| Ridge | S1: S2 + hindsight sire/BS stats | 0.636 | 0.009 | 0.856 | 0.662 | 48.4% |
+| Average ensemble | S1 | 0.643 | 0.009 | 0.848 | 0.656 | 47.8% |
+
+F1–F3 (with the cross statistics) are in the full table for reference only.
 
 Fold-paired comparisons (`results/05_paired_comparisons.md`):
 - Session is by far the biggest gain (+0.203).
-- Consignor reputation adds +0.005, improving all 5 folds.
-- The extra pedigree statistics add nothing.
-- Nonlinear models add only +0.004 to +0.007 over the revised Ridge. The ensemble wins in all 5 folds (t = 4.3), but the gain is economically small.
+- Consignor reputation adds +0.005.
+- Hindsight sire/BS stats add +0.002.
+- Nonlinear models add +0.003 to +0.006 over Ridge. The ensemble wins in all 5 folds, but the gain is economically small.
 
-### 3.2 Predicting a later sale — `results/03_temporal.md`
+### 4.2 Predicting a later sale — `results/03_temporal.md`
 
 | Model | 2022 | 2023 | 2024 | Mean |
 |---|---|---|---|---|
-| Ridge, published predictors | 0.394 | 0.365 | 0.268 | 0.342 |
-| Ridge, F2 | 0.636 | 0.608 | 0.621 | 0.622 |
-| LightGBM, F3 | 0.615 | 0.603 | 0.625 | 0.615 |
-| CatBoost, F3 | 0.632 | 0.603 | 0.632 | 0.622 |
-| Average ensemble | 0.637 | 0.611 | 0.631 | 0.626 |
+| Ridge, published predictors (F0) | 0.394 | 0.365 | 0.268 | 0.342 |
+| Ridge, S2 (clean) | 0.623 | 0.598 | 0.623 | 0.615 |
+| LightGBM, S2 | 0.606 | 0.602 | 0.626 | 0.611 |
+| CatBoost, S2 | 0.624 | 0.599 | 0.633 | 0.619 |
+| **Average ensemble, S2** | 0.624 | 0.603 | 0.631 | **0.619** |
+| Ridge, S1 (+ hindsight stats) | 0.635 | 0.596 | 0.629 | 0.620 |
 
-The year-level market shift accounts for less than 0.01 of R². Per-year prediction intervals, multiplicative on
-price, are about ×/÷2.8 at 80% and ×/÷4.0 at 90%.
+The unforecastable year-level market shift costs less than 0.005 R². Prediction intervals on price are about
+×/÷2.85 at 80% and ×/÷4.0 at 90%.
 
-### 3.3 Interpretation — `results/04_inference_and_sessions.md`
+### 4.3 Interpretation (clean S2, OLS with sire-clustered SEs) — `results/04_inference_and_sessions.md`
 
-- **Sire reputation mostly works through session placement.** In OLS with clustered SEs, a 1-SD increase in
-  cross-fitted Sire Reputation goes with +0.66 log points without session effects, but only +0.16 with them. Better
-  sires get placed in earlier sessions; within a session, sire reputation still matters, but much less.
-- **Dam Reputation is weak once leakage is removed** (0.034 → 0.014, not significant with session FE).
-  Permutation importance ≈ 0. The paper's measurement-error story isn't needed: most dams have no prior sales in the
-  sample to build a reputation from.
-- Consignor reputation (+0.09 per SD), sire black-type rate (+0.12), males (+0.11 log points ≈ 12%), and
-  sire-new-to-sale (+0.20) remain significant with session FE.
-- **The sire-reputation slope falls across books**: 0.26 (Sessions 1–2), then 0.22, 0.19, 0.13, 0.09, down to −0.01
-  (Sessions 11–12). The Wald test that the slopes are equal gives p = 0.0002. Caveat: sessions are assigned partly on
-  expected price, so slopes within a session are affected by that selection.
-- **Accuracy by session**: RMSE rises from about 0.61 (Session 1) to 0.89–0.97 (Sessions 6–9). Median absolute
-  dollar error rises from 39% to 52%. Within-session R² is 0.08–0.21. The paper's 0.21–0.37 was inflated by the
-  same leakage.
+- **Sire reputation works mostly through session placement.** A 1-SD increase goes with +0.81 log points without
+  session effects, but only +0.24 with them. Better-bred yearlings are placed in earlier sessions; within a
+  session, sire reputation still matters, but much less.
+- **Dam Reputation is weak** once its leak is removed (+0.017, p = 0.07 with session FE). Permutation
+  importance ≈ 0. Most dams have no other sales in the sample to build a reputation from.
+- Consignor reputation (+0.09 per SD), colts (+0.11 log points ≈ +11%) and sire-new-to-sale (+0.09) stay
+  significant with session FE. Dosage terms are small.
+- **The sire-reputation slope falls across books**: 0.33 (Sessions 1–2), then 0.31, 0.27, 0.21, 0.17, down to 0.03
+  (Sessions 11–12). The Wald test that the slopes are equal gives p = 0.0001. Caveat: sessions are assigned partly
+  on expected value, so within-session slopes are affected by that selection.
+- **Accuracy by session**: RMSE rises from about 0.62 (Session 1) to 0.90–0.97 (Sessions 6–9). Median absolute
+  dollar error rises from 37% to 55%. Within-session R² is 0.07–0.21; the paper's 0.21–0.37 was inflated by leakage.
 
-## 4. What this means for the paper's ML sections
+## 5. What this means for the paper's ML sections
 
-1. **Headline number:** report about 0.64 (nested CV) and about 0.63 (predicting the next sale), not 0.54. Also
-   state that the published predictors alone reach only about 0.43 without leakage.
-2. **Main message changes:** the sale session is the dominant pre-sale signal, and pedigree and reputation
-   signals add value *within* sessions. Keeneland places yearlings after inspecting them, so session partly reflects
-   an expert judgement of conformation that the catalog statistics don't contain. Say this openly. It explains why
-   pedigree-only models stop near 0.43.
-3. **Model choice:** keep Ridge or OLS as the readable benchmark (0.637). Report the ensemble as the best predictor
-   (0.645), and say plainly that ML adds little once session is included.
-4. **Reputation indices must be cross-fitted or built from earlier years only**, and the methods section should
-   say so explicitly.
+1. **Headline:** about 0.62 out-of-sample R² when predicting the next sale from catalog information (0.64 in
+   nested CV), not 0.54. The published predictors alone reach only about 0.34–0.43 without leakage.
+2. **Main message:** sale session is the dominant pre-sale signal, and reputation signals add value within
+   sessions. Keeneland places yearlings after inspecting them, so session partly reflects an expert judgement of
+   conformation. Say so.
+3. **Model choice:** Ridge or OLS is the readable benchmark. The ensemble is the best predictor, but ML adds little
+   (+0.006) once session is included.
+4. **Methods text must state** that reputation indices are cross-fitted or built from earlier years only, that
+   cross statistics are excluded because they contain the horse's own racing record, and that all tuning is
+   nested.
 
-## 5. Remaining limitations (cannot be fixed with `sold.csv`)
+## 6. Remaining limitations (cannot be fixed with `sold.csv`)
 
-- **Look-ahead in pedigree statistics.** Progeny counts and earnings (Sire_starters, AEI, etc.) look like they were
-  pulled after the sales, not as of each catalog date: only 2.6% of rows have a sire with zero starters. That leaks
-  some future racing information. A clean fix needs Equineline snapshots dated to each sale.
-- **Unsold horses aren't in the data** (no RNAs or buybacks), so the model describes sold horses only. Adding RNA
-  and buyback records would allow a selection model.
+- **Dated pedigree statistics.** To use sire and broodmare-sire records without hindsight, the paper needs
+  Equineline snapshots as of each catalog date. The S1 results bound the gain from those statistics at about
+  +0.002 R².
+- **Unsold horses aren't in the data** (no RNAs or buybacks), so the model describes sold horses only.
 - **Prices in `sold.csv` are not round hammer prices** (for example 155,503.608), so they look inflation-adjusted.
-  Check this before quoting dollar figures. Log-scale results with year effects are unaffected.
+  Check this before quoting dollar figures.
 - No hip-level variables (foaling date, dam produce record, X-rays or conformation). These are the most likely
   sources of further gains.

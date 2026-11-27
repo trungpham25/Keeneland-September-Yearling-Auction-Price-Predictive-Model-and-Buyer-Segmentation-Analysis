@@ -14,11 +14,13 @@ from common import RESULTS, fmt_table
 oof = pd.read_csv(f"{RESULTS}/02_oof_predictions.csv")
 pairs = [("ridge_F1", "ridge_F0", "Add session (Ridge)"),
          ("ridge_F2", "ridge_F1", "Add consignor reputation (Ridge)"),
-         ("ridge_F3", "ridge_F2", "Add extra pedigree stats (Ridge)"),
+         ("ridge_S2", "ridge_F2", "Drop post-sale pedigree stats: F2 -> clean S2 (Ridge)"),
+         ("ridge_S1", "ridge_S2", "Add hindsight sire/BS stats: S2 -> S1 (Ridge)"),
          ("lgbm_F0", "ridge_F0", "LightGBM vs Ridge, published predictors"),
-         ("lgbm_F3", "ridge_F2", "LightGBM F3 vs Ridge F2"),
-         ("cat_F3", "ridge_F2", "CatBoost F3 vs Ridge F2"),
-         ("ensemble_F3", "ridge_F2", "Ensemble vs Ridge F2")]
+         ("lgbm_S2", "ridge_S2", "LightGBM vs Ridge, clean S2"),
+         ("cat_S2", "ridge_S2", "CatBoost vs Ridge, clean S2"),
+         ("ensemble_S2", "ridge_S2", "Ensemble vs Ridge, clean S2"),
+         ("ensemble_F3", "ensemble_S2", "Ensemble with post-sale stats (F3) vs clean (S2)")]
 rows = []
 for a, b, label in pairs:
     d = np.array([r2_score(g.y, g[a]) - r2_score(g.y, g[b]) for _, g in oof.groupby("fold")])
@@ -48,10 +50,11 @@ bars = [
     ("− own price in\nreputation", leak["C"], "#bf616a"),
     ("+ session", cvd[("Ridge", "F1")], "#5e81ac"),
     ("+ consignor", cvd[("Ridge", "F2")], "#5e81ac"),
-    ("Ensemble\n(nested CV)", cvd[("Average ensemble (Ridge + LightGBM + CatBoost)", "F3")], "#2e3440"),
-    ("Ensemble, next\nyear's sale", temp["Average ensemble"], "#2e3440"),
+    ("− post-sale\npedigree stats\n(clean Ridge)", cvd[("Ridge", "S2")], "#2e3440"),
+    ("Clean ensemble\n(nested CV)", cvd[("Average ensemble (Ridge + LightGBM + CatBoost)", "S2")], "#2e3440"),
+    ("Clean ensemble,\nnext year's sale", temp["Average ensemble, S2 (clean)"], "#2e3440"),
 ]
-fig, ax = plt.subplots(figsize=(10, 4.2), dpi=150)
+fig, ax = plt.subplots(figsize=(11, 4.6), dpi=150)
 x = np.arange(len(bars))
 ax.bar(x, [b[1] for b in bars], color=[b[2] for b in bars], width=0.65)
 for i, b in enumerate(bars):
@@ -64,7 +67,10 @@ ax.axvline(1.5, color="#ccc", lw=0.8, ls="--")
 ax.axvline(3.5, color="#ccc", lw=0.8, ls="--")
 ax.text(0.5, 0.71, "Published", ha="center", fontsize=9, color="#555")
 ax.text(2.5, 0.71, "Removing leakage", ha="center", fontsize=9, color="#555")
-ax.text(5.5, 0.71, "Revised model (leak-free)", ha="center", fontsize=9, color="#555")
+ax.text(6, 0.71, "Revised model", ha="center", fontsize=9, color="#555")
+ax.text(len(bars) - 0.6, -0.17, "Dark bars: fully clean (catalog-only inputs, no post-sale data). All other bars "
+        "still include the cross statistics that contain the horse's own racing record.",
+        ha="right", fontsize=7.5, color="#555", transform=ax.get_xaxis_transform())
 for s in ("top", "right"):
     ax.spines[s].set_visible(False)
 fig.tight_layout()

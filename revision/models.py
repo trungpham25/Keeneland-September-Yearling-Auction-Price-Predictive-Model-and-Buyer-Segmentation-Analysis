@@ -10,14 +10,23 @@ from sklearn.linear_model import HuberRegressor, LinearRegression, RidgeCV
 from sklearn.model_selection import GridSearchCV, KFold, RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 
-from common import (EXTRA_PEDIGREE, PAPER_NUMERIC, RIDGE_ALPHAS, SEED,
-                    build_preprocessor)
+from common import (DOSAGE, EXTRA_PEDIGREE, PAPER_NUMERIC, RIDGE_ALPHAS, SEED,
+                    SIRE_BS_STATS, build_preprocessor)
 
 KEYS3 = ["Sire_key", "Dam_key", "Consignor_key"]
+CATALOG = ["Is_male", "Sire_new_to_sale"] + DOSAGE
 
 # ---------------------------------------------------------------------------
-# Feature sets (cumulative)
+# Feature sets
 # ---------------------------------------------------------------------------
+# F0-F3 keep the published predictors, which include the sire x broodmare-sire
+# cross statistics. Those contain the horse's own post-sale racing record, so
+# F0-F3 are reported only to trace the path from the published model.
+# S1/S2 are the clean sets used for the revised results:
+#   S2 (main): catalog information only - session, year, sex, color, dosage,
+#       sire/dam/consignor reputation from *other* horses' prices.
+#   S1 (sensitivity): S2 + sire and broodmare-sire progeny statistics, which
+#       were pulled after the sales (hindsight, but not the horse's own record).
 FEATURE_SETS = {
     "F0": dict(numeric=PAPER_NUMERIC + ["Sire_new_to_sale"], onehot=["Year"],
                rep_cols=["Sire_key", "Dam_key"]),
@@ -27,12 +36,18 @@ FEATURE_SETS = {
                rep_cols=KEYS3),
     "F3": dict(numeric=PAPER_NUMERIC + ["Sire_new_to_sale"] + EXTRA_PEDIGREE,
                onehot=["Year", "Session", "Color"], rep_cols=KEYS3, rep_count=True),
+    "S1": dict(numeric=CATALOG + SIRE_BS_STATS, onehot=["Year", "Session", "Color"],
+               rep_cols=KEYS3, rep_count=True),
+    "S2": dict(numeric=CATALOG, onehot=["Year", "Session", "Color"],
+               rep_cols=KEYS3, rep_count=True),
 }
 FEATURE_SET_LABELS = {
-    "F0": "Published 20 predictors (leak-free)",
+    "F0": "Published 20 predictors, reputation leak removed (still contains own-record cross stats)",
     "F1": "F0 + sale session",
     "F2": "F1 + consignor reputation",
     "F3": "F2 + extra pedigree stats, color, prior-sales counts",
+    "S1": "Clean + hindsight: S2 + sire/broodmare-sire progeny stats (pulled after the sales)",
+    "S2": "Clean, catalog-only: session, year, sex, color, dosage, sire/dam/consignor reputation",
 }
 MIN_N = {"Sire_key": 5, "Dam_key": 2, "Consignor_key": 3}
 

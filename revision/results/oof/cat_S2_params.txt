@@ -1,0 +1,5 @@
+{'depth': 7, 'iterations': 651, 'l2_leaf_reg': np.float64(3.7315110666957843), 'learning_rate': np.float64(0.016223483600332343), 'random_strength': np.float64(1.5196166903948605)}
+{'depth': 7, 'iterations': 651, 'l2_leaf_reg': np.float64(3.7315110666957843), 'learning_rate': np.float64(0.016223483600332343), 'random_strength': np.float64(1.5196166903948605)}
+{'depth': 7, 'iterations': 651, 'l2_leaf_reg': np.float64(3.7315110666957843), 'learning_rate': np.float64(0.016223483600332343), 'random_strength': np.float64(1.5196166903948605)}
+{'depth': 7, 'iterations': 651, 'l2_leaf_reg': np.float64(3.7315110666957843), 'learning_rate': np.float64(0.016223483600332343), 'random_strength': np.float64(1.5196166903948605)}
+{'depth': 7, 'iterations': 651, 'l2_leaf_reg': np.float64(3.7315110666957843), 'learning_rate': np.float64(0.016223483600332343), 'random_strength': np.float64(1.5196166903948605)}

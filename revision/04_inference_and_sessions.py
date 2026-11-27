@@ -28,7 +28,7 @@ import statsmodels.api as sm
 from sklearn.inspection import permutation_importance
 from sklearn.model_selection import StratifiedKFold
 
-from common import RESULTS, SEED, CrossFitReputation, PAPER_NUMERIC, fmt_table, load_data, metrics
+from common import RESULTS, SEED, CrossFitReputation, DOSAGE, fmt_table, load_data, metrics
 from models import FEATURE_SETS, MIN_N, lgbm_model, linear_model
 
 df = load_data()
@@ -41,9 +41,11 @@ enc = CrossFitReputation(cols=("Sire_key", "Dam_key", "Consignor_key"), method="
 R = enc.fit_transform(df[["Sire_key", "Dam_key", "Consignor_key"]], df["y"])
 df["Sire_Reputation"], df["Dam_Reputation"], df["Consignor_Reputation"] = R.T
 
+# Clean (S2) specification: no cross statistics (own racing record) and no
+# progeny statistics pulled after the sale.
 cont = ["Sire_Reputation", "Dam_Reputation", "Consignor_Reputation"] + [
-    c for c in PAPER_NUMERIC if c != "Is_male"]
-binary = ["Is_male", "Sire_new_to_sale"]
+    c for c in DOSAGE if c != "Dosage_missing"]
+binary = ["Is_male", "Sire_new_to_sale", "Dosage_missing"]
 X0 = df[cont].copy()
 X0 = X0.fillna(X0.median())
 X0 = (X0 - X0.mean()) / X0.std()
@@ -80,7 +82,7 @@ compact.index.name = "Predictor"
 # (b-i) Accuracy by session from pooled OOF predictions
 # ---------------------------------------------------------------------------
 oof = pd.read_csv(f"{RESULTS}/02_oof_predictions.csv")
-model_col = "ensemble_F3" if "ensemble_F3" in oof else "ridge_F2"
+model_col = "ensemble_S2" if "ensemble_S2" in oof else "ridge_S2"
 sess_rows = []
 for s in range(1, 13):
     m = oof["Session"].values == s
@@ -134,7 +136,6 @@ GROUPS = {
     "Sire progeny stats": ["log_Sire_starters", "Sire_BW_rate", "Sire_aei", "Sire_win_rate",
                            "log_Sire_earn_per_starter", "Sire_unraced_progeny"],
     "Broodmare-sire stats": ["log_BS_foals", "BS_BW_rate", "BS_aei", "BS_win_rate", "log_BS_earn_per_starter"],
-    "Sire x BS cross stats": ["log_Combo_starters", "log_Combo_earnings", "Combo_aei", "Combo_BW", "log_Combo_foals"],
     "Dosage profile": ["Brilliant", "Intermediate", "Classic", "Solid", "Professional", "Dosage_Index",
                        "Center_of_Distribution", "Dosage_missing"],
     "Sex": ["Is_male"],
@@ -142,9 +143,9 @@ GROUPS = {
     "Color": ["Color"],
 }
 outer = list(StratifiedKFold(5, shuffle=True, random_state=SEED).split(df, df["Session"]))
-imp = {"Ridge F2": {g: [] for g in GROUPS}, "LightGBM F3": {g: [] for g in GROUPS}}
-lgb_params = open(f"{RESULTS}/oof/lgbm_F3_params.txt").read().splitlines() if os.path.exists(
-    f"{RESULTS}/oof/lgbm_F3_params.txt") else None
+imp = {"Ridge S1": {g: [] for g in GROUPS}, "LightGBM S1": {g: [] for g in GROUPS}}
+lgb_params = open(f"{RESULTS}/oof/lgbm_S1_params.txt").read().splitlines() if os.path.exists(
+    f"{RESULTS}/oof/lgbm_S1_params.txt") else None
 
 
 def perm_drop(model, te, cols, base_r2, n_rep=5):
@@ -160,11 +161,11 @@ def perm_drop(model, te, cols, base_r2, n_rep=5):
 
 for k, (tr, te_idx) in enumerate(outer):
     trd, ted = df.iloc[tr], df.iloc[te_idx].copy()
-    models = {"Ridge F2": linear_model("F2", "ridge").fit(trd, trd["y"]).best_estimator_}
+    models = {"Ridge S1": linear_model("S1", "ridge").fit(trd, trd["y"]).best_estimator_}
     if lgb_params:
-        m = lgbm_model("F3").estimator
+        m = lgbm_model("S1").estimator
         m.set_params(**eval(lgb_params[k], {"np": np}))  # params saved with np.float64(...) reprs
-        models["LightGBM F3"] = m.fit(trd, trd["y"])
+        models["LightGBM S1"] = m.fit(trd, trd["y"])
     for name, model in models.items():
         base_r2 = metrics(ted["y"], model.predict(ted))["R2"]
         for g, cols in GROUPS.items():
@@ -177,7 +178,9 @@ impt.to_csv(f"{RESULTS}/04_permutation_importance.csv")
 with open(f"{RESULTS}/04_inference_and_sessions.md", "w") as f:
     f.write("# Step 4: interpretation and session heterogeneity\n\n")
     f.write("## (a) OLS coefficients, cluster-robust SEs by sire (N = 6,416)\n\n")
-    f.write("Reputation indices are cross-fitted (no horse's own price enters its index). Continuous predictors "
+    f.write("Clean specification S2: catalog information only (no cross statistics, which contain the horse's own "
+            "racing record, and no progeny statistics pulled after the sale). "
+            "Reputation indices are cross-fitted (no horse's own price enters its index). Continuous predictors "
             "standardized; coefficients are changes in log price per 1 SD. Year FE in both columns; "
             f"session FE in the second. R2: {fit_a.rsquared:.3f} without session FE, {fit_b.rsquared:.3f} with.\n\n")
     f.write(fmt_table(compact) + "\n\n")
@@ -190,5 +193,7 @@ with open(f"{RESULTS}/04_inference_and_sessions.md", "w") as f:
     f.write(f"Cluster-robust Wald test that all Sire Rep x Book interactions are zero: "
             f"F = {float(np.squeeze(wald.statistic)):.2f}, p = {float(wald.pvalue):.4f}.\n\n")
     f.write("## (c) Grouped permutation importance (mean drop in out-of-fold R2 over 5 outer folds)\n\n")
+    f.write("Models use the S1 set (S2 + sire/broodmare-sire progeny statistics) so the hindsight statistics can "
+            "be ranked too.\n\n")
     f.write(fmt_table(impt) + "\n")
 print(open(f"{RESULTS}/04_inference_and_sessions.md").read())
